@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Layout from "@/components/Layout";
 import { useBudgets } from "@/hooks/useBudgets";
 import { useExpenses } from "@/hooks/useExpenses";
@@ -10,13 +10,14 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "@/hooks/use-toast";
-import { Plus, Trash2 } from "lucide-react";
-import { EXPENSE_CATEGORIES } from "@/types";
+import { Plus, Trash2, Pencil } from "lucide-react";
+import { EXPENSE_CATEGORIES, Budget } from "@/types";
 
 const Budgets = () => {
   const { budgets, setBudget, deleteBudget } = useBudgets();
   const { expenses } = useExpenses();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
   
   // Form state
   const [amount, setAmount] = useState("");
@@ -28,6 +29,16 @@ const Budgets = () => {
     setAmount("");
     setCategory("");
     setMonth(new Date().toISOString().slice(0, 7));
+    setEditingBudget(null);
+  };
+
+  // Handle edit
+  const handleEdit = (budget: Budget) => {
+    setEditingBudget(budget);
+    setAmount(budget.amount.toString());
+    setCategory(budget.category);
+    setMonth(budget.month);
+    setIsDialogOpen(true);
   };
 
   // Handle form submission
@@ -51,7 +62,7 @@ const Budgets = () => {
 
     toast({
       title: "Success",
-      description: "Budget saved successfully",
+      description: editingBudget ? "Budget updated successfully" : "Budget saved successfully",
     });
 
     resetForm();
@@ -97,6 +108,27 @@ const Budgets = () => {
     b.month.localeCompare(a.month)
   );
 
+  // Check for over-budget notifications
+  useEffect(() => {
+    budgetStats.forEach((budget) => {
+      // Only show notification for current month budgets that are over 100%
+      const currentMonth = new Date().toISOString().slice(0, 7);
+      if (budget.month === currentMonth && budget.percentage > 100) {
+        const notificationKey = `budget_alert_${budget.id}_${budget.month}`;
+        const hasShownNotification = sessionStorage.getItem(notificationKey);
+        
+        if (!hasShownNotification) {
+          toast({
+            title: "⚠️ Budget Exceeded!",
+            description: `You've exceeded your ${budget.category} budget by $${Math.abs(budget.remaining).toFixed(2)}`,
+            variant: "destructive",
+          });
+          sessionStorage.setItem(notificationKey, "true");
+        }
+      }
+    });
+  }, [budgetStats]);
+
   return (
     <Layout>
       <div className="space-y-6">
@@ -118,7 +150,7 @@ const Budgets = () => {
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Set Budget</DialogTitle>
+                <DialogTitle>{editingBudget ? "Edit Budget" : "Set Budget"}</DialogTitle>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
@@ -162,7 +194,7 @@ const Budgets = () => {
                 </div>
 
                 <Button type="submit" className="w-full">
-                  Save Budget
+                  {editingBudget ? "Update Budget" : "Save Budget"}
                 </Button>
               </form>
             </DialogContent>
@@ -190,13 +222,22 @@ const Budgets = () => {
                         })}
                       </p>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDelete(budget.id)}
-                    >
-                      <Trash2 className="w-4 h-4 text-destructive" />
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEdit(budget)}
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDelete(budget.id)}
+                      >
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
