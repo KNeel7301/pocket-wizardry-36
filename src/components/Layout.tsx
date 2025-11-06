@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useCurrency } from "@/hooks/useCurrency";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { LayoutDashboard, Receipt, PiggyBank, LogOut, Wallet, Target } from "lucide-react";
+import { LayoutDashboard, Receipt, PiggyBank, LogOut, Wallet, Target, Brain } from "lucide-react";
 import { CURRENCIES, CurrencyCode } from "@/types";
 
 interface LayoutProps {
@@ -27,6 +27,7 @@ const Layout = ({ children }: LayoutProps) => {
     { path: "/expenses", label: "Expenses", icon: Receipt },
     { path: "/budgets", label: "Budgets", icon: PiggyBank },
     { path: "/goals", label: "Goals", icon: Target },
+    { path: "/insights", label: "AI Insights", icon: Brain },
   ];
 
   return (

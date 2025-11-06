@@ -10,6 +10,7 @@ import Dashboard from "./pages/Dashboard";
 import Expenses from "./pages/Expenses";
 import Budgets from "./pages/Budgets";
 import Goals from "./pages/Goals";
+import Insights from "./pages/Insights";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -69,6 +70,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <Goals />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/insights"
+              element={
+                <ProtectedRoute>
+                  <Insights />
                 </ProtectedRoute>
               }
             />
