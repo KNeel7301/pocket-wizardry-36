@@ -2,13 +2,16 @@ import { useMemo } from "react";
 import Layout from "@/components/Layout";
 import { useExpenses } from "@/hooks/useExpenses";
 import { useBudgets } from "@/hooks/useBudgets";
+import { useCurrency } from "@/hooks/useCurrency";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { DollarSign, TrendingUp, TrendingDown, PiggyBank } from "lucide-react";
+import { ExportButtons } from "@/components/ExportButtons";
 
 const Dashboard = () => {
   const { expenses } = useExpenses();
   const { budgets } = useBudgets();
+  const { formatCurrency } = useCurrency();
 
   // Get current month in YYYY-MM format
   const currentMonth = new Date().toISOString().slice(0, 7);
@@ -60,9 +63,12 @@ const Dashboard = () => {
   return (
     <Layout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold">Dashboard</h1>
-          <p className="text-muted-foreground">Overview of your finances for {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
+        <div className="flex justify-between items-start flex-wrap gap-4">
+          <div>
+            <h1 className="text-3xl font-bold">Dashboard</h1>
+            <p className="text-muted-foreground">Overview of your finances for {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
+          </div>
+          <ExportButtons expenses={expenses.filter((exp) => exp.date.startsWith(currentMonth))} title="Monthly Report" />
         </div>
 
         {/* Stats Cards */}
@@ -73,7 +79,7 @@ const Dashboard = () => {
               <TrendingDown className="w-4 h-4 text-destructive" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">${stats.totalSpent.toFixed(2)}</div>
+              <div className="text-2xl font-bold">{formatCurrency(stats.totalSpent)}</div>
               <p className="text-xs text-muted-foreground">This month</p>
             </CardContent>
           </Card>
@@ -84,7 +90,7 @@ const Dashboard = () => {
               <PiggyBank className="w-4 h-4 text-primary" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">${stats.totalBudget.toFixed(2)}</div>
+              <div className="text-2xl font-bold">{formatCurrency(stats.totalBudget)}</div>
               <p className="text-xs text-muted-foreground">Allocated this month</p>
             </CardContent>
           </Card>
@@ -96,7 +102,7 @@ const Dashboard = () => {
             </CardHeader>
             <CardContent>
               <div className={`text-2xl font-bold ${stats.remaining >= 0 ? 'text-green-600' : 'text-destructive'}`}>
-                ${Math.abs(stats.remaining).toFixed(2)}
+                {formatCurrency(Math.abs(stats.remaining))}
               </div>
               <p className="text-xs text-muted-foreground">
                 {stats.remaining >= 0 ? 'Under budget' : 'Over budget'}

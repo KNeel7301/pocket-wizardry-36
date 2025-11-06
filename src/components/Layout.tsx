@@ -1,8 +1,11 @@
 import { ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCurrency } from "@/hooks/useCurrency";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, Receipt, PiggyBank, LogOut, Wallet } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { LayoutDashboard, Receipt, PiggyBank, LogOut, Wallet, Target } from "lucide-react";
+import { CURRENCIES, CurrencyCode } from "@/types";
 
 interface LayoutProps {
   children: ReactNode;
@@ -10,6 +13,7 @@ interface LayoutProps {
 
 const Layout = ({ children }: LayoutProps) => {
   const { user, logout } = useAuth();
+  const { currency, updateCurrency } = useCurrency();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -22,6 +26,7 @@ const Layout = ({ children }: LayoutProps) => {
     { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { path: "/expenses", label: "Expenses", icon: Receipt },
     { path: "/budgets", label: "Budgets", icon: PiggyBank },
+    { path: "/goals", label: "Goals", icon: Target },
   ];
 
   return (
@@ -38,6 +43,18 @@ const Layout = ({ children }: LayoutProps) => {
             </Link>
             
             <div className="flex items-center gap-4">
+              <Select value={currency} onValueChange={(value) => updateCurrency(value as CurrencyCode)}>
+                <SelectTrigger className="w-[120px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(CURRENCIES).map(([code, info]) => (
+                    <SelectItem key={code} value={code}>
+                      {info.symbol} {code}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <span className="text-sm text-muted-foreground">
                 Welcome, {user?.name}
               </span>

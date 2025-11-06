@@ -1,6 +1,7 @@
 import { useState } from "react";
 import Layout from "@/components/Layout";
 import { useExpenses } from "@/hooks/useExpenses";
+import { useCurrency } from "@/hooks/useCurrency";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -12,9 +13,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { toast } from "@/hooks/use-toast";
 import { Plus, Trash2, Pencil } from "lucide-react";
 import { EXPENSE_CATEGORIES, Expense } from "@/types";
+import { ExportButtons } from "@/components/ExportButtons";
 
 const Expenses = () => {
   const { expenses, addExpense, updateExpense, deleteExpense } = useExpenses();
+  const { formatCurrency } = useCurrency();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   
@@ -100,22 +103,24 @@ const Expenses = () => {
   return (
     <Layout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
             <h1 className="text-3xl font-bold">Expenses</h1>
             <p className="text-muted-foreground">Track and manage your expenses</p>
           </div>
           
-          <Dialog open={isDialogOpen} onOpenChange={(open) => {
-            setIsDialogOpen(open);
-            if (!open) resetForm();
-          }}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="w-4 h-4 mr-2" />
-                Add Expense
-              </Button>
-            </DialogTrigger>
+          <div className="flex gap-2 flex-wrap">
+            <ExportButtons expenses={sortedExpenses} title="Expense Report" />
+            <Dialog open={isDialogOpen} onOpenChange={(open) => {
+              setIsDialogOpen(open);
+              if (!open) resetForm();
+            }}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Expense
+                </Button>
+              </DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>
@@ -179,6 +184,7 @@ const Expenses = () => {
               </form>
             </DialogContent>
           </Dialog>
+          </div>
         </div>
 
         <Card>
@@ -211,7 +217,7 @@ const Expenses = () => {
                         <TableCell>{expense.category}</TableCell>
                         <TableCell>{expense.description || "-"}</TableCell>
                         <TableCell className="text-right font-medium">
-                          ${expense.amount.toFixed(2)}
+                          {formatCurrency(expense.amount)}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
