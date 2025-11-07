@@ -20,8 +20,8 @@ const Dashboard = () => {
   const currentMonth = new Date().toISOString().slice(0, 7);
   
   // State for month comparison
-  const [compareMonth1, setCompareMonth1] = useState(currentMonth);
-  const [compareMonth2, setCompareMonth2] = useState("");
+  const [selectedMonths, setSelectedMonths] = useState<string[]>([currentMonth]);
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
   
   // Get available months from expenses
   const availableMonths = useMemo(() => {
@@ -71,48 +71,72 @@ const Dashboard = () => {
       }));
   }, [budgets, stats.byCategory, currentMonth]);
 
-  // Calculate comparison data
+  // Get categories available in selected months
+  const availableCategories = useMemo(() => {
+    if (selectedMonths.length === 0) return [];
+    
+    const categories = new Set<string>();
+    expenses.forEach(exp => {
+      if (selectedMonths.some(month => exp.date.startsWith(month))) {
+        categories.add(exp.category);
+      }
+    });
+    
+    return Array.from(categories).sort();
+  }, [expenses, selectedMonths]);
+
+  // Calculate comparison data for multiple months
   const comparisonData = useMemo(() => {
-    if (!compareMonth2) return null;
+    if (selectedMonths.length < 2) return null;
 
-    const month1Expenses = expenses.filter(exp => exp.date.startsWith(compareMonth1));
-    const month2Expenses = expenses.filter(exp => exp.date.startsWith(compareMonth2));
+    // Filter by selected category if not "all"
+    const filterByCategory = (exps: typeof expenses) => 
+      selectedCategory === "all" ? exps : exps.filter(e => e.category === selectedCategory);
 
-    const month1Total = month1Expenses.reduce((sum, exp) => sum + exp.amount, 0);
-    const month2Total = month2Expenses.reduce((sum, exp) => sum + exp.amount, 0);
-
-    const month1Budget = budgets.filter(b => b.month === compareMonth1).reduce((sum, b) => sum + b.amount, 0);
-    const month2Budget = budgets.filter(b => b.month === compareMonth2).reduce((sum, b) => sum + b.amount, 0);
-
-    // Category comparison
-    const allCategories = new Set([
-      ...month1Expenses.map(e => e.category),
-      ...month2Expenses.map(e => e.category)
-    ]);
-
-    const categoryComparison = Array.from(allCategories).map(category => {
-      const month1Amount = month1Expenses.filter(e => e.category === category).reduce((sum, e) => sum + e.amount, 0);
-      const month2Amount = month2Expenses.filter(e => e.category === category).reduce((sum, e) => sum + e.amount, 0);
+    // Calculate totals for each month
+    const monthTotals = selectedMonths.map(month => {
+      const monthExpenses = filterByCategory(expenses.filter(exp => exp.date.startsWith(month)));
+      const total = monthExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+      const budget = budgets.filter(b => b.month === month && (selectedCategory === "all" || b.category === selectedCategory))
+        .reduce((sum, b) => sum + b.amount, 0);
       
-      return {
-        category,
-        month1: month1Amount,
-        month2: month2Amount,
-        difference: month2Amount - month1Amount,
-        percentChange: month1Amount > 0 ? ((month2Amount - month1Amount) / month1Amount) * 100 : 0
-      };
+      return { month, total, budget };
+    });
+
+    // Get all categories if viewing all, or just the selected category
+    const categoriesToShow = selectedCategory === "all" ? availableCategories : [selectedCategory];
+
+    // Category-wise comparison across all selected months
+    const categoryComparison = categoriesToShow.map(category => {
+      const dataPoint: any = { category };
+      
+      selectedMonths.forEach(month => {
+        const monthExpenses = expenses.filter(exp => 
+          exp.date.startsWith(month) && exp.category === category
+        );
+        const total = monthExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+        dataPoint[month] = total;
+      });
+      
+      return dataPoint;
     });
 
     return {
-      month1Total,
-      month2Total,
-      month1Budget,
-      month2Budget,
-      totalDifference: month2Total - month1Total,
-      totalPercentChange: month1Total > 0 ? ((month2Total - month1Total) / month1Total) * 100 : 0,
+      monthTotals,
       categoryComparison
     };
-  }, [expenses, budgets, compareMonth1, compareMonth2]);
+  }, [expenses, budgets, selectedMonths, selectedCategory, availableCategories]);
+
+  // Toggle month selection
+  const toggleMonth = (month: string) => {
+    setSelectedMonths(prev => {
+      if (prev.includes(month)) {
+        return prev.filter(m => m !== month);
+      } else {
+        return [...prev, month].sort().reverse();
+      }
+    });
+  };
 
   const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884D8", "#82CA9D", "#FFC658", "#FF6B9D", "#8DD1E1"];
 
@@ -259,99 +283,90 @@ const Dashboard = () => {
                   Select Months to Compare
                 </CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Select Months (select 2 or more)</label>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                    {availableMonths.map(month => (
+                      <Button
+                        key={month}
+                        variant={selectedMonths.includes(month) ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => toggleMonth(month)}
+                        className="w-full"
+                      >
+                        {new Date(month + "-01").toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                      </Button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {selectedMonths.length} month{selectedMonths.length !== 1 ? 's' : ''} selected
+                  </p>
+                </div>
+
+                {selectedMonths.length >= 2 && (
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">First Month</label>
-                    <Select value={compareMonth1} onValueChange={setCompareMonth1}>
+                    <label className="text-sm font-medium">Filter by Category</label>
+                    <Select value={selectedCategory} onValueChange={setSelectedCategory}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {availableMonths.map(month => (
-                          <SelectItem key={month} value={month}>
-                            {new Date(month + "-01").toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                        <SelectItem value="all">All Categories</SelectItem>
+                        {availableCategories.map(category => (
+                          <SelectItem key={category} value={category}>
+                            {category}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Second Month</label>
-                    <Select value={compareMonth2} onValueChange={setCompareMonth2}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select month to compare" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {availableMonths.filter(m => m !== compareMonth1).map(month => (
-                          <SelectItem key={month} value={month}>
-                            {new Date(month + "-01").toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
+                )}
               </CardContent>
             </Card>
 
             {comparisonData ? (
               <>
-                {/* Comparison Stats */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium">
-                        {new Date(compareMonth1 + "-01").toLocaleDateString('en-US', { month: 'short', year: 'numeric' })} Spent
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">{formatCurrency(comparisonData.month1Total)}</div>
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium">
-                        {new Date(compareMonth2 + "-01").toLocaleDateString('en-US', { month: 'short', year: 'numeric' })} Spent
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">{formatCurrency(comparisonData.month2Total)}</div>
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium">Difference</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className={`text-2xl font-bold ${comparisonData.totalDifference < 0 ? 'text-green-600' : 'text-destructive'}`}>
-                        {comparisonData.totalDifference > 0 ? '+' : ''}{formatCurrency(comparisonData.totalDifference)}
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        {comparisonData.totalPercentChange > 0 ? '+' : ''}{comparisonData.totalPercentChange.toFixed(1)}%
-                      </p>
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium">Budget Comparison</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-1">
-                        <div className="text-sm">{formatCurrency(comparisonData.month1Budget)} → {formatCurrency(comparisonData.month2Budget)}</div>
-                        <p className="text-xs text-muted-foreground">Total budgets</p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {/* Category-wise Comparison Chart */}
+                {/* Monthly Totals Comparison */}
                 <Card>
                   <CardHeader>
-                    <CardTitle>Category-wise Spending Comparison</CardTitle>
+                    <CardTitle>
+                      Monthly Spending Overview
+                      {selectedCategory !== "all" && ` - ${selectedCategory}`}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {comparisonData.monthTotals.map(({ month, total, budget }) => (
+                        <Card key={month}>
+                          <CardHeader className="pb-2">
+                            <CardTitle className="text-sm font-medium">
+                              {new Date(month + "-01").toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="text-2xl font-bold">{formatCurrency(total)}</div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Budget: {formatCurrency(budget)}
+                            </p>
+                            {budget > 0 && (
+                              <p className={`text-xs mt-1 ${total > budget ? 'text-destructive' : 'text-green-600'}`}>
+                                {total > budget ? 'Over' : 'Under'} by {formatCurrency(Math.abs(budget - total))}
+                              </p>
+                            )}
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Comparison Chart */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>
+                      {selectedCategory === "all" ? "Category-wise" : selectedCategory} Spending Across Months
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
                     {comparisonData.categoryComparison.length > 0 ? (
@@ -362,16 +377,14 @@ const Dashboard = () => {
                           <YAxis />
                           <Tooltip formatter={(value: number) => formatCurrency(value)} />
                           <Legend />
-                          <Bar 
-                            dataKey="month1" 
-                            fill="#0088FE" 
-                            name={new Date(compareMonth1 + "-01").toLocaleDateString('en-US', { month: 'short', year: 'numeric' })} 
-                          />
-                          <Bar 
-                            dataKey="month2" 
-                            fill="#FF8042" 
-                            name={new Date(compareMonth2 + "-01").toLocaleDateString('en-US', { month: 'short', year: 'numeric' })} 
-                          />
+                          {selectedMonths.map((month, index) => (
+                            <Bar 
+                              key={month}
+                              dataKey={month} 
+                              fill={COLORS[index % COLORS.length]} 
+                              name={new Date(month + "-01").toLocaleDateString('en-US', { month: 'short', year: 'numeric' })} 
+                            />
+                          ))}
                         </BarChart>
                       </ResponsiveContainer>
                     ) : (
@@ -382,10 +395,10 @@ const Dashboard = () => {
                   </CardContent>
                 </Card>
 
-                {/* Detailed Category Comparison Table */}
+                {/* Detailed Comparison Table */}
                 <Card>
                   <CardHeader>
-                    <CardTitle>Detailed Category Analysis</CardTitle>
+                    <CardTitle>Detailed Analysis</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="overflow-x-auto">
@@ -393,28 +406,22 @@ const Dashboard = () => {
                         <thead>
                           <tr className="border-b">
                             <th className="text-left py-2 px-4">Category</th>
-                            <th className="text-right py-2 px-4">
-                              {new Date(compareMonth1 + "-01").toLocaleDateString('en-US', { month: 'short' })}
-                            </th>
-                            <th className="text-right py-2 px-4">
-                              {new Date(compareMonth2 + "-01").toLocaleDateString('en-US', { month: 'short' })}
-                            </th>
-                            <th className="text-right py-2 px-4">Difference</th>
-                            <th className="text-right py-2 px-4">Change %</th>
+                            {selectedMonths.map(month => (
+                              <th key={month} className="text-right py-2 px-4">
+                                {new Date(month + "-01").toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                              </th>
+                            ))}
                           </tr>
                         </thead>
                         <tbody>
-                          {comparisonData.categoryComparison.map((cat, idx) => (
-                            <tr key={idx} className="border-b">
+                          {comparisonData.categoryComparison.map((cat, index) => (
+                            <tr key={index} className="border-b hover:bg-muted/50">
                               <td className="py-2 px-4 font-medium">{cat.category}</td>
-                              <td className="text-right py-2 px-4">{formatCurrency(cat.month1)}</td>
-                              <td className="text-right py-2 px-4">{formatCurrency(cat.month2)}</td>
-                              <td className={`text-right py-2 px-4 ${cat.difference < 0 ? 'text-green-600' : 'text-destructive'}`}>
-                                {cat.difference > 0 ? '+' : ''}{formatCurrency(cat.difference)}
-                              </td>
-                              <td className={`text-right py-2 px-4 ${cat.percentChange < 0 ? 'text-green-600' : 'text-destructive'}`}>
-                                {cat.percentChange > 0 ? '+' : ''}{cat.percentChange.toFixed(1)}%
-                              </td>
+                              {selectedMonths.map(month => (
+                                <td key={month} className="text-right py-2 px-4">
+                                  {formatCurrency(cat[month] || 0)}
+                                </td>
+                              ))}
                             </tr>
                           ))}
                         </tbody>
@@ -425,11 +432,8 @@ const Dashboard = () => {
               </>
             ) : (
               <Card>
-                <CardContent className="py-12">
-                  <div className="text-center text-muted-foreground">
-                    <ArrowRightLeft className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                    <p>Select a second month to compare</p>
-                  </div>
+                <CardContent className="py-12 text-center text-muted-foreground">
+                  Please select at least 2 months to start comparing
                 </CardContent>
               </Card>
             )}
