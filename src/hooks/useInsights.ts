@@ -1,5 +1,6 @@
-import { useMemo } from "react";
+import { useMemo, useEffect, useState } from "react";
 import { Expense, Budget } from "@/types";
+import * as tf from "@tensorflow/tfjs";
 
 interface SpendingTrend {
   category: string;
@@ -24,7 +25,85 @@ interface ForecastData {
   confidence: "high" | "medium" | "low";
 }
 
+// Train a simple linear regression model for spending prediction
+const trainSpendingModel = async (historicalData: number[]) => {
+  if (historicalData.length < 3) return null;
+
+  // Prepare training data: [month_index] -> [spending]
+  const xs = tf.tensor2d(historicalData.map((_, i) => [i]), [historicalData.length, 1]);
+  const ys = tf.tensor2d(historicalData.map(val => [val]), [historicalData.length, 1]);
+
+  // Create a simple linear model: y = mx + b
+  const model = tf.sequential();
+  model.add(tf.layers.dense({ units: 1, inputShape: [1] }));
+  model.compile({ optimizer: tf.train.adam(0.1), loss: 'meanSquaredError' });
+
+  // Train the model
+  await model.fit(xs, ys, { epochs: 100, verbose: 0 });
+
+  return model;
+};
+
 export const useInsights = (expenses: Expense[], budgets: Budget[]) => {
+  const [mlPredictions, setMlPredictions] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    const trainModels = async () => {
+      const currentDate = new Date();
+      const predictions: Record<string, number> = {};
+
+      // Group expenses by month and category
+      const expensesByMonthCategory = expenses.reduce((acc, exp) => {
+        const month = exp.date.slice(0, 7);
+        if (!acc[month]) acc[month] = {};
+        if (!acc[month][exp.category]) acc[month][exp.category] = 0;
+        acc[month][exp.category] += exp.amount;
+        return acc;
+      }, {} as Record<string, Record<string, number>>);
+
+      // Get all unique categories
+      const categories = Array.from(
+        new Set(expenses.map(exp => exp.category))
+      );
+
+      // Train a model for each category
+      for (const category of categories) {
+        const monthlyData: number[] = [];
+        
+        // Collect last 6 months of data for this category
+        for (let i = 5; i >= 0; i--) {
+          const date = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1);
+          const monthKey = date.toISOString().slice(0, 7);
+          monthlyData.push(expensesByMonthCategory[monthKey]?.[category] || 0);
+        }
+
+        // Train model and predict next month
+        if (monthlyData.some(val => val > 0)) {
+          try {
+            const model = await trainSpendingModel(monthlyData);
+            if (model) {
+              const prediction = model.predict(tf.tensor2d([[monthlyData.length]], [1, 1])) as tf.Tensor;
+              const predictedValue = (await prediction.data())[0];
+              predictions[category] = Math.max(0, predictedValue);
+              
+              // Clean up
+              model.dispose();
+              prediction.dispose();
+            }
+          } catch (error) {
+            console.error(`Failed to train model for ${category}:`, error);
+          }
+        }
+      }
+
+      setMlPredictions(predictions);
+    };
+
+    if (expenses.length > 0) {
+      trainModels();
+    }
+  }, [expenses]);
+
   const insights = useMemo(() => {
     const currentDate = new Date();
     const currentMonth = currentDate.toISOString().slice(0, 7);
@@ -90,17 +169,35 @@ export const useInsights = (expenses: Expense[], budgets: Budget[]) => {
           });
         }
 
-        // Predict next month using simple moving average
-        if (older > 0) {
-          const predicted = (current + previous + older) / 3;
+        // Use ML prediction if available, otherwise use moving average
+        const predicted = mlPredictions[category] !== undefined 
+          ? mlPredictions[category]
+          : older > 0 ? (current + previous + older) / 3 : current;
+
+        if (predicted > 0) {
           const variance = Math.abs(current - previous) + Math.abs(previous - older);
-          const confidence = variance < 50 ? "high" : variance < 150 ? "medium" : "low";
+          const mlConfidence = mlPredictions[category] !== undefined ? "high" : "medium";
+          const confidence = mlPredictions[category] !== undefined 
+            ? mlConfidence
+            : variance < 50 ? "high" : variance < 150 ? "medium" : "low";
           
           forecasts.push({
             category,
             predicted,
             confidence,
           });
+
+          // Generate prediction-based insights
+          if (mlPredictions[category] !== undefined && predicted > current * 1.2) {
+            generatedInsights.push({
+              id: `ml_prediction_${category}`,
+              type: "prediction",
+              title: `${category} spending likely to increase`,
+              description: `Based on ML analysis of your spending patterns, ${category} expenses are predicted to reach ${predicted.toFixed(2)} next month (${((predicted - current) / current * 100).toFixed(0)}% increase). Consider setting aside extra budget.`,
+              category,
+              priority: "medium",
+            });
+          }
         }
       }
     });
@@ -140,7 +237,7 @@ export const useInsights = (expenses: Expense[], budgets: Budget[]) => {
       }
     });
 
-    // Smart suggestions based on patterns
+    // Smart suggestions based on ML patterns
     const totalCurrent = Object.values(currentExpenses).reduce((sum, val) => sum + val, 0);
     const totalPrevious = Object.values(previousExpenses).reduce((sum, val) => sum + val, 0);
 
@@ -150,6 +247,18 @@ export const useInsights = (expenses: Expense[], budgets: Budget[]) => {
         type: "warning",
         title: "Overall spending increased",
         description: `Your total spending increased by ${(((totalCurrent - totalPrevious) / totalPrevious) * 100).toFixed(1)}% this month. Review your expenses and consider adjusting budgets.`,
+        priority: "high",
+      });
+    }
+
+    // ML-powered total spending prediction
+    const totalPredicted = Object.values(mlPredictions).reduce((sum, val) => sum + val, 0);
+    if (totalPredicted > totalCurrent * 1.15) {
+      generatedInsights.push({
+        id: "ml_overall_prediction",
+        type: "prediction",
+        title: "Rising spending trend detected",
+        description: `ML models predict your total spending will increase to $${totalPredicted.toFixed(2)} next month. This is ${((totalPredicted - totalCurrent) / totalCurrent * 100).toFixed(0)}% higher than this month. Review your upcoming expenses.`,
         priority: "high",
       });
     }
@@ -207,7 +316,7 @@ export const useInsights = (expenses: Expense[], budgets: Budget[]) => {
       totalCurrentSpending: totalCurrent,
       totalPreviousSpending: totalPrevious,
     };
-  }, [expenses, budgets]);
+  }, [expenses, budgets, mlPredictions]);
 
   return insights;
 };
